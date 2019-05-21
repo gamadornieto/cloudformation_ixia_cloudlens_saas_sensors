@@ -1,0 +1,351 @@
+{
+    "Description": "Cloudlens Simple demo generic AWS account - web_srv + PC+ NTOP + TCPDUMP",
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Metadata": {
+        "Author": "Gustavo AMADOR NIETO - Keysight Technologies",
+        "Version": "3",
+        "Version Notes": "Lab",
+        "Candidate": "Gustavo AMADOR NIETO - gustavo.amador-nieto@keysight.com",
+        "Comlpeted Date": "15/05/2019.11:00 PM",
+        "Comments": "Cloudlens Simple demo generic AWS account - web_srv + PC+ NTOP + TCPDUMP ",
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "CloudLens Project Key"
+                    },
+                    "Parameters": [
+                        "CloudLensProjectKey"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "User Name"
+                    },
+                    "Parameters": [
+                        "UserName"
+                    ]
+                }
+            ]
+        },
+        "AWS::CloudFormation::Designer": {
+            "5c372cc1-f384-41d5-bba9-4686491da2f7": {
+                "size": {
+                    "width": 60,
+                    "height": 60
+                },
+                "position": {
+                    "x": 60,
+                    "y": 90
+                },
+                "z": 1,
+                "embeds": []
+            }
+        }
+    },
+    "Parameters": {
+        "LabAttendee": {
+            "Description": "Name of User",
+            "Type": "String",
+            "Default": "Gustavo AMADOR"
+        },
+        "CloudLensProjectKey": {
+            "Type": "String",
+            "Description": "Create a project in CloudLens SaaS @ https://ixia-sandbox.cloud",
+            "Default": "<Cloudlens_Project_Key>"
+        },
+        "KeyName": {
+            "Description": "AWS Key Name",
+            "Type": "String",
+            "Default": "<Your_AWS_key_pair>"
+        }
+    },
+    "Resources": {
+        "VPC": {
+          "Type": "AWS::EC2::VPC",
+          "Properties": {
+            "CidrBlock": "10.0.0.0/16"
+          }
+        },
+        "InternetGateway": {
+          "Type": "AWS::EC2::InternetGateway"
+        },
+        "VPCGatewayAttachment": {
+          "Type": "AWS::EC2::VPCGatewayAttachment",
+          "Properties": {
+            "VpcId": {"Ref": "VPC"},
+            "InternetGatewayId": {"Ref": "InternetGateway"}
+          }
+        },
+        "Subnet": {
+          "Type": "AWS::EC2::Subnet",
+          "Properties": {
+            "AvailabilityZone": {"Fn::Select": ["0", {"Fn::GetAZs": {"Ref": "AWS::Region"}}]},
+            "CidrBlock": {"Fn::Join": ["", ["10.0.0.0/24"]]},
+            "VpcId": {"Ref": "VPC"},
+            "MapPublicIpOnLaunch": "true"
+          }
+        },
+        "RouteTable": {
+          "Type": "AWS::EC2::RouteTable",
+          "Properties": {
+            "VpcId": {"Ref": "VPC"}
+          }
+        },
+        "EC2ReadOnlyRole": {
+          "Type": "AWS::IAM::Role",
+          "Properties": {
+            "AssumeRolePolicyDocument": {
+              "Version" : "2012-10-17",
+              "Statement": [ {
+                    "Effect": "Allow",
+                    "Principal":  {
+                      "Service": "ec2.amazonaws.com"
+                    },
+                    "Action": [ "sts:AssumeRole" ]
+               } ]
+             },
+          "Path": "/"
+          }
+        },
+        "ListEC2Policy" : {
+          "Type" : "AWS::IAM::Policy",
+          "Properties" : {
+              "PolicyName" : "ec2ReadOnlyPolicy",
+              "PolicyDocument" : {
+                  "Statement" : [{
+                      "Effect" : "Allow",
+                      "Action" : [ "ec2:Describe*" ],
+                      "Resource" : "*"
+                   }]
+              },
+              "Roles" : [ { "Ref" : "EC2ReadOnlyRole" } ]
+            }
+          },
+         "CFInstanceProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                  "Path": "/",
+                  "Roles": [ { "Ref": "EC2ReadOnlyRole" } ]
+            }
+          },
+      "SgSSHWeb": {
+  			"Type": "AWS::EC2::SecurityGroup",
+  			"Properties": {
+  				"GroupDescription": {"Ref": "AWS::StackName"},
+  				"SecurityGroupIngress": [
+            {
+  					"CidrIp": "0.0.0.0/0",
+  					"FromPort": 80,
+  					"IpProtocol": "tcp",
+  					"ToPort": 80
+            },
+            {
+  					"CidrIp": "0.0.0.0/0",
+  					"FromPort": 22,
+  					"IpProtocol": "tcp",
+  					"ToPort": 22
+            },
+            {
+  					"CidrIp": "0.0.0.0/0",
+  					"FromPort": 9993,
+  					"IpProtocol": "udp",
+  					"ToPort": 9993
+            },
+            {
+  					"CidrIp": "0.0.0.0/0",
+  					"FromPort": 19993,
+  					"IpProtocol": "udp",
+  					"ToPort": 19994
+            }
+        ]
+      }
+  		},
+          "InstanceWeb1": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "DisableApiTermination": "false",
+                "InstanceInitiatedShutdownBehavior": "stop",
+                "ImageId": "ami-c58c1dd3",
+                "InstanceType": "t2.micro",
+                "IamInstanceProfile": {"Ref": "CFInstanceProfile"},
+                "Monitoring": "false",
+                "KeyName": {"Ref": "KeyName"},
+				        "SecurityGroupIds":  [ {"Ref": "SgSSHWeb"} ],
+                "Tags": [
+                    { "Key": "Name", "Value": "Instance_web1" },
+                    { "Key": "Type", "Value": "web_srv" },
+                    { "Key": "Owner", "Value": { "Ref": "LabAttendee" } }
+                ],
+                "UserData": { "Fn::Base64": {"Fn::Join": ["",[
+                                "#!/bin/bash -v\n",
+                                "sudo yum update -y \n",
+                                "sudo yum -y install docker\n",
+                                "sudo service docker start \n",
+                                "sudo systemctl enable docker\n",
+                                "sudo docker run --name cl_sensor -v /:/host -d --restart=always --net=host --privileged ixiacom/cloudlens-sandbox-agent --server agent.ixia-sandbox.cloud --accept_eula y --apikey ", { "Ref": "CloudLensProjectKey" }, "\n"
+                ]]}}
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Designer": {
+                    "id": "5c372cc1-f384-41d5-bba9-4686491da2f7"
+                }
+            }
+        },
+        "InstanceWeb2": {
+          "Type": "AWS::EC2::Instance",
+          "Properties": {
+              "DisableApiTermination": "false",
+              "InstanceInitiatedShutdownBehavior": "stop",
+              "ImageId": "ami-c58c1dd3",
+              "InstanceType": "t2.micro",
+              "IamInstanceProfile": {"Ref": "CFInstanceProfile"},
+              "Monitoring": "false",
+              "KeyName": {"Ref": "KeyName"},
+              "SecurityGroupIds":  [ {"Ref": "SgSSHWeb"} ],
+              "Tags": [
+                  { "Key": "Name", "Value": "Instance_web2" },
+                  { "Key": "Type", "Value": "web_srv" },
+                  { "Key": "Owner", "Value": { "Ref": "LabAttendee" } }
+              ],
+              "UserData": { "Fn::Base64": {"Fn::Join": ["",[
+                              "#!/bin/bash -v\n",
+                              "sudo yum update -y \n",
+                              "sudo yum -y install docker\n",
+                              "sudo service docker start \n",
+                              "sudo systemctl enable docker\n",
+                              "sudo docker run --name cl_sensor -v /:/host -d --restart=always --net=host --privileged ixiacom/cloudlens-sandbox-agent --server agent.ixia-sandbox.cloud --accept_eula y --apikey ", { "Ref": "CloudLensProjectKey" }, "\n"
+              ]]}}
+          },
+          "Metadata": {
+              "AWS::CloudFormation::Designer": {
+                  "id": "5c372cc1-f384-41d5-bba9-4686491da2f7"
+              }
+          }
+      },
+      "InstancePC1": {
+        "Type": "AWS::EC2::Instance",
+        "Properties": {
+            "DisableApiTermination": "false",
+            "InstanceInitiatedShutdownBehavior": "stop",
+            "ImageId": "ami-c58c1dd3",
+            "InstanceType": "t2.micro",
+            "IamInstanceProfile": {"Ref": "CFInstanceProfile"},
+            "Monitoring": "false",
+            "KeyName": {"Ref": "KeyName"},
+            "SecurityGroupIds":  [ {"Ref": "SgSSHWeb"} ],
+            "Tags": [
+                { "Key": "Name", "Value": "Instance_PC1" },
+                { "Key": "Type", "Value": "PC" },
+                { "Key": "Owner", "Value": { "Ref": "LabAttendee" } }
+            ],
+            "UserData": { "Fn::Base64": {"Fn::Join": ["",[
+                            "#!/bin/bash -v\n",
+                            "sudo yum update -y \n",
+                            "sudo yum -y install docker\n",
+                            "sudo service docker start \n",
+                            "sudo systemctl enable docker\n",
+                            "sudo docker run --name cl_sensor -v /:/host -d --restart=always --net=host --privileged ixiacom/cloudlens-sandbox-agent --server agent.ixia-sandbox.cloud --accept_eula y --apikey ", { "Ref": "CloudLensProjectKey" }, "\n",
+                            "sleep 40\n",
+                            "#for i in {1..10}; do wget www.elmundo.es ; sleep 1 ; nslookup www.yahoo.com ; done\n",
+                            "for i in {1..500}; do wget www.elmundo.es ; sleep 1 ; nslookup www.yahoo.com ; done\n",
+                            "sleep 30\n",
+                            "#for i in {1..10}; do wget www.ixiacom.com ;sleep 1 ; nslookup www.yahoo.com ; done\n",
+                            "for i in {1..400}; do wget www.ixiacom.com ;sleep 1 ; nslookup www.yahoo.com ; done\n"
+            ]]}}
+        },
+        "Metadata": {
+            "AWS::CloudFormation::Designer": {
+                "id": "5c372cc1-f384-41d5-bba9-4686491da2f7"
+            }
+        }
+    },
+      "InstanceTCPDUMP": {
+        "Type": "AWS::EC2::Instance",
+        "Properties": {
+            "DisableApiTermination": "false",
+            "InstanceInitiatedShutdownBehavior": "stop",
+            "ImageId": "ami-c58c1dd3",
+            "InstanceType": "t2.micro",
+            "IamInstanceProfile": {"Ref": "CFInstanceProfile"},
+            "Monitoring": "false",
+            "KeyName": {"Ref": "KeyName"},
+            "SecurityGroupIds":  [ {"Ref": "SgSSHWeb"} ],
+            "Tags": [
+                { "Key": "Name", "Value": "Instance_TCPDUMP" },
+                { "Key": "Type", "Value": "tcpdump" },
+                { "Key": "Owner", "Value": { "Ref": "LabAttendee" } }
+            ],
+            "UserData": { "Fn::Base64": {"Fn::Join": ["",[
+                            "#!/bin/bash -v\n",
+                            "sudo yum update -y \n",
+                            "sudo yum -y install docker\n",
+                            "sudo service docker start \n",
+                            "sudo systemctl enable docker\n",
+                            "sudo docker run --name cl_sensor -v /:/host -d --restart=always --net=host --privileged ixiacom/cloudlens-sandbox-agent --server agent.ixia-sandbox.cloud --accept_eula y --apikey ", { "Ref": "CloudLensProjectKey" }, "\n",
+                            "sudo yum -y install tcpdump\n",
+                            "echo TCP_DUMP_INSTALLED >> /tmp/kk.txt"
+            ]]}}
+        },
+        "Metadata": {
+            "AWS::CloudFormation::Designer": {
+                "id": "5c372cc1-f384-41d5-bba9-4686491da2f7"
+            }
+        }
+    },
+    "InstanceNTOP": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+          "DisableApiTermination": "false",
+          "InstanceInitiatedShutdownBehavior": "stop",
+          "ImageId": "ami-c58c1dd3",
+          "InstanceType": "t2.micro",
+          "IamInstanceProfile": {"Ref": "CFInstanceProfile"},
+          "Monitoring": "false",
+          "KeyName": {"Ref": "KeyName"},
+          "SecurityGroupIds":  [ {"Ref": "SgSSHWeb"} ],
+          "Tags": [
+              { "Key": "Name", "Value": "Instance_NTOP" },
+              { "Key": "Type", "Value": "NTOP" },
+              { "Key": "Owner", "Value": { "Ref": "LabAttendee" } }
+          ],
+          "UserData": { "Fn::Base64": {"Fn::Join": ["",[
+                          "#!/bin/bash -v\n",
+                          "sudo yum update -y \n",
+                          "sudo yum -y install docker\n",
+                          "sudo service docker start \n",
+                          "sudo systemctl enable docker\n",
+                          "sudo docker run --name cl_sensor -v /:/host -d --restart=always --net=host --privileged ixiacom/cloudlens-sandbox-agent --server agent.ixia-sandbox.cloud --accept_eula y --apikey ", { "Ref": "CloudLensProjectKey" }, "\n",
+                          "sudo docker run --name ntop_engine --net=host -t -p 3000:3000 -d lucaderi/ntopng-docker ntopnp -i cloudlens0\n"
+          ]]}}
+      },
+      "Metadata": {
+          "AWS::CloudFormation::Designer": {
+              "id": "5c372cc1-f384-41d5-bba9-4686491da2f7"
+          }
+      }
+  }
+    },
+    "Outputs": {
+      "InstanceWeb1SSH": {
+        "Description": "SSH for Instance_web1",
+        "Value": {"Fn::Join": ["", [ "ssh -i ", "~/.ssh/",{ "Ref": "KeyName"}  ,".pem",  " ec2-user@", {"Fn::GetAtt": ["InstanceWeb1","PublicDnsName"]} ]  ]}
+      },
+      "InstanceWeb2SSH": {
+        "Description": "SSH for Instance_web2",
+        "Value": {"Fn::Join": ["", [ "ssh -i ", "~/.ssh/",{ "Ref": "KeyName"}  ,".pem", " ec2-user@", {"Fn::GetAtt": ["InstanceWeb2","PublicDnsName"]} ]  ]}
+      },
+      "InstanceDB1": {
+        "Description": "SSH for Instance_PC1",
+        "Value": {"Fn::Join": ["", [ "ssh -i ", "~/.ssh/",{ "Ref": "KeyName"}  ,".pem" , " ec2-user@", {"Fn::GetAtt": ["InstancePC1","PublicDnsName"]} ]  ]}
+      },
+      "InstanceTCPDUMP": {
+        "Description": "SSH for Instance_TCPDUMP",
+        "Value": {"Fn::Join": ["", [ "ssh -i ", "~/.ssh/",{ "Ref": "KeyName"}  ,".pem", " ec2-user@", {"Fn::GetAtt": ["InstanceTCPDUMP","PublicDnsName"]} ]  ]}
+      },
+      "InstanceNTOP": {
+        "Description": "SSH for Instance_TCPDUMP",
+        "Value": {"Fn::Join": ["", [ "http://",  {"Fn::GetAtt": ["InstanceTCPDUMP","PublicDnsName"]} , ":3000" ]  ]}
+      }
+   }
+}
